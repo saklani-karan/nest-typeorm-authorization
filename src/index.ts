@@ -1,4 +1,4 @@
-export * from "./authorization/abac.module";
+export * from "./authorization/authorization.module";
 export * from "./authorization/services/authorization.service";
 export * from "./authorization/decorators/abac.decorator";
 export * from "./authorization/constants/abac.constants";
