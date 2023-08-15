@@ -3,14 +3,14 @@ import {
     ABAC_MODULE_OPTIONS,
     ABAC_MODULE_TOKEN,
 } from "./constants/abac.constants";
-import { AuthorizationController } from "./controllers/abac.controller";
+import { AuthorizationController } from "./controllers/authorization.controller";
 import {
     AuthorizationModuleAsyncOptions,
     AuthorizationModuleFactory,
     AuthorizationModuleOptions,
     DatabaseEntity,
-} from "./services/abac.interface";
-import { AuthorizationService } from "./services/abac.service";
+} from "./services/authorization.interface";
+import { AuthorizationService } from "./services/authorization.service";
 
 @Module({})
 export class AuthorizationModule {

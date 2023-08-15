@@ -1,4 +1,4 @@
-import { DatabaseEntity } from "../services/abac.interface";
+import { DatabaseEntity } from "../services/authorization.interface";
 
 export type Permission = {
     resource: string;

@@ -7,7 +7,7 @@ import { Role } from "../entities/postgres/role.entity";
 import { UserPermissions } from "../entities/postgres/userPermissions.entity";
 import { UserPoliciesDenorm } from "../entities/postgres/userPoliciesDenorm.entity";
 import { RoleAlreadyExistsOnUserException } from "../exceptions/RoleExistsException.exception";
-import { DatabaseEntity } from "../services/abac.interface";
+import { DatabaseEntity } from "../services/authorization.interface";
 
 export class AddToUserTransactionInput<UserEntity extends DatabaseEntity> {
     role: Role;

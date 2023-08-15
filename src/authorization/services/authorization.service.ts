@@ -14,7 +14,10 @@ import {
     Repository,
 } from "typeorm";
 import { ABAC_MODULE_OPTIONS } from "../constants/abac.constants";
-import { AuthorizationModuleOptions, DatabaseEntity } from "./abac.interface";
+import {
+    AuthorizationModuleOptions,
+    DatabaseEntity,
+} from "./authorization.interface";
 import { getEntities } from "../entities";
 import { Role } from "../entities/postgres/role.entity";
 import { CreateRoleParams } from "../dto/createRoleParams.dto";

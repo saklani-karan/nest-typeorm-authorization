@@ -22,8 +22,8 @@ import { RemoveUserParams } from "../dto/removeUser.dto";
 import { Policy } from "../entities/postgres/policy.entity";
 import { Role } from "../entities/postgres/role.entity";
 import { HttpExceptionFilter } from "../filters/HttpExceptionFilter.filter";
-import { DatabaseEntity } from "../services/abac.interface";
-import { AuthorizationService } from "../services/abac.service";
+import { DatabaseEntity } from "../services/authorization.interface";
+import { AuthorizationService } from "../services/authorization.service";
 
 @UseFilters(HttpExceptionFilter)
 @Controller("iam")

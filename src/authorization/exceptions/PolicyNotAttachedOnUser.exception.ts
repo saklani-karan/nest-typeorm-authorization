@@ -1,8 +1,9 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { Policy } from "../entities/postgres/policy.entity";
-import { DatabaseEntity } from "../services/abac.interface";
+import { Role } from "../entities/postgres/role.entity";
+import { DatabaseEntity } from "../services/authorization.interface";
 
-export class PolicyAlreadyAttachedOnUserException<
+export class PolicyNotAttachedOnUserException<
     UserEntity extends DatabaseEntity
 > extends HttpException {
     constructor({
@@ -13,8 +14,8 @@ export class PolicyAlreadyAttachedOnUserException<
         userId: UserEntity["id"];
     }) {
         super(
-            `policy with id=${policyId} already exists on user with id=${userId}`,
-            HttpStatus.CONFLICT
+            `policy with policyId=${policyId} does not exist on user with id=${userId}`,
+            HttpStatus.NOT_FOUND
         );
     }
 }

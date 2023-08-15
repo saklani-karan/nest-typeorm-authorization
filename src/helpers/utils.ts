@@ -1,4 +1,4 @@
-import { Policy } from "../abac/entities/postgres/policy.entity";
+import { Policy } from "../authorization/entities/postgres/policy.entity";
 
 export const convertPolicyToPolicyMapKey = (
     policy: Pick<Policy, "action" | "resource">

@@ -2,7 +2,7 @@ import { QueryRunner } from "typeorm";
 import { PrimaryTransaction } from "../../helpers/transaction";
 import { UserPermissions } from "../entities/postgres/userPermissions.entity";
 import { UserPoliciesDenorm } from "../entities/postgres/userPoliciesDenorm.entity";
-import { DatabaseEntity } from "../services/abac.interface";
+import { DatabaseEntity } from "../services/authorization.interface";
 
 export class RemoveUserTransactionParams<UserEntity extends DatabaseEntity> {
     user: UserEntity;

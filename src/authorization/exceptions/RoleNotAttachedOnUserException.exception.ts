@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { Role } from "../entities/postgres/role.entity";
-import { DatabaseEntity } from "../services/abac.interface";
+import { DatabaseEntity } from "../services/authorization.interface";
 
 export class RoleNotAttachedOnUserException<
     UserEntity extends DatabaseEntity

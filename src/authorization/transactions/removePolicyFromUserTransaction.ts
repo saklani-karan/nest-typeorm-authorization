@@ -1,49 +1,50 @@
 import { QueryRunner } from "typeorm";
 import { PrimaryTransaction } from "../../helpers/transaction";
-import { Role } from "../entities/postgres/role.entity";
+import { convertPolicyToPolicyMapKey } from "../../helpers/utils";
+import { Policy } from "../entities/postgres/policy.entity";
 import { UserPermissions } from "../entities/postgres/userPermissions.entity";
 import { UserPoliciesDenorm } from "../entities/postgres/userPoliciesDenorm.entity";
-import { DatabaseEntity } from "../services/abac.interface";
+import { DatabaseEntity } from "../services/authorization.interface";
 
-export class RemoveRoleFromUserTransactionParams<
+export type RemovePolicyFromUserTransactionParams<
     UserEntity extends DatabaseEntity
-> {
-    role: Role;
+> = {
+    policy: Policy;
     user: UserEntity;
     subject: string;
     userPermissions: UserPermissions;
-}
+};
 
-export class RemoveRoleFromUserTransactionResponse {
+export type RemovePolicyFromUserTransactionResponse = {
     success: boolean;
-}
+};
 
-export class RemoveRoleFromUserTransaction<
+export class RemovePolicyFromUserTransaction<
     UserEntity extends DatabaseEntity
 > extends PrimaryTransaction<
-    RemoveRoleFromUserTransactionParams<UserEntity>,
-    RemoveRoleFromUserTransactionResponse
+    RemovePolicyFromUserTransactionParams<UserEntity>,
+    RemovePolicyFromUserTransactionResponse
 > {
     protected async execute(
-        data: RemoveRoleFromUserTransactionParams<UserEntity>,
+        data: any,
         queryRunner: QueryRunner
-    ): Promise<RemoveRoleFromUserTransactionResponse> {
-        const { role, subject, userPermissions } = data;
+    ): Promise<RemovePolicyFromUserTransactionResponse> {
+        const { policy, user, subject, userPermissions } = data;
 
         try {
             await queryRunner.manager.query<Number>(
-                `DELETE FROM user_permission_roles WHERE user_id=$1 AND role_id=$2`,
-                [userPermissions.id, role.id]
+                `DELETE FROM user_permission_policies WHERE user_id=$1 AND policy_id=$2`,
+                [userPermissions.id, policy.id]
             );
         } catch (err) {
-            this.logger.error("error deleting role", err as Error);
+            this.logger.error("error deleting policy", err as Error);
             throw err;
         }
 
         try {
             await queryRunner.manager.delete(UserPoliciesDenorm, {
                 subject,
-                roleKey: role.name,
+                policyMapKey: convertPolicyToPolicyMapKey(policy),
             });
         } catch (err) {
             this.logger.error("error deleting denorm policies", err as Error);
