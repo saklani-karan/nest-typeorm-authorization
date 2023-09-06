@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { DeepPartial } from "typeorm";
-import { Policy } from "../entities/postgres/policy.entity";
+import { Policy } from "../entities/sql/policy.entity";
 
 export class PolicyExistsException extends HttpException {
     constructor({ resource, action }: DeepPartial<Policy>) {

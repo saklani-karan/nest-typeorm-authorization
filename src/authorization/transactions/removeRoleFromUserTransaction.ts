@@ -1,33 +1,69 @@
-import { QueryRunner } from "typeorm";
+import { EntityManager, MongoEntityManager, QueryRunner } from "typeorm";
 import { PrimaryTransaction } from "../../helpers/transaction";
-import { Role } from "../entities/postgres/role.entity";
-import { UserPermissions } from "../entities/postgres/userPermissions.entity";
-import { UserPoliciesDenorm } from "../entities/postgres/userPoliciesDenorm.entity";
-import { DatabaseEntity } from "../services/authorization.interface";
+import {
+    Role as SqlRole,
+    UserPermissions as SqlUserPermissions,
+    UserPoliciesDenorm as SqlUserPoliciesDenorm,
+} from "../entities/sql";
+import {
+    Role as MongoRole,
+    UserPermissions as MongoUserPermissions,
+    UserPoliciesDenorm as MongoUserPoliciesDenorm,
+} from "../entities/mongodb";
+import {
+    DatabaseConnectionType,
+    DatabaseEntity,
+} from "../services/authorization.interface";
+import { ObjectId } from "mongodb";
+import { InternalServerError } from "../exceptions/InternalServerError.exception";
 
-export class RemoveRoleFromUserTransactionParams<
+export type IRemoveRoleFromUserTransactionInput<
+    IRole extends SqlRole | MongoRole,
+    IUserPermissions extends SqlUserPermissions | MongoUserPermissions,
     UserEntity extends DatabaseEntity
-> {
-    role: Role;
+> = {
+    role: IRole;
     user: UserEntity;
     subject: string;
-    userPermissions: UserPermissions;
-}
+    userPermissions: IUserPermissions;
+};
 
-export class RemoveRoleFromUserTransactionResponse {
+export type IRemoveRoleFromUserTransactionOutput = {
     success: boolean;
-}
+};
+
+export type RemoveRoleFromUserTransactionInput<
+    UserEntity extends DatabaseEntity
+> = {
+    [DatabaseConnectionType.MONGO]: IRemoveRoleFromUserTransactionInput<
+        MongoRole,
+        MongoUserPermissions,
+        UserEntity
+    >;
+    [DatabaseConnectionType.SQL]: IRemoveRoleFromUserTransactionInput<
+        SqlRole,
+        SqlUserPermissions,
+        UserEntity
+    >;
+};
+
+export type RemoveRoleFromUserTransactionOutput = {
+    [DatabaseConnectionType.MONGO]: IRemoveRoleFromUserTransactionOutput;
+    [DatabaseConnectionType.SQL]: IRemoveRoleFromUserTransactionOutput;
+};
 
 export class RemoveRoleFromUserTransaction<
     UserEntity extends DatabaseEntity
 > extends PrimaryTransaction<
-    RemoveRoleFromUserTransactionParams<UserEntity>,
-    RemoveRoleFromUserTransactionResponse
+    RemoveRoleFromUserTransactionInput<UserEntity>,
+    RemoveRoleFromUserTransactionOutput
 > {
-    protected async execute(
-        data: RemoveRoleFromUserTransactionParams<UserEntity>,
+    protected async executeSQL(
+        data: RemoveRoleFromUserTransactionInput<UserEntity>[DatabaseConnectionType.SQL],
         queryRunner: QueryRunner
-    ): Promise<RemoveRoleFromUserTransactionResponse> {
+    ): Promise<
+        RemoveRoleFromUserTransactionOutput[DatabaseConnectionType.SQL]
+    > {
         const { role, subject, userPermissions } = data;
 
         try {
@@ -41,13 +77,48 @@ export class RemoveRoleFromUserTransaction<
         }
 
         try {
-            await queryRunner.manager.delete(UserPoliciesDenorm, {
+            await queryRunner.manager.delete(SqlUserPoliciesDenorm, {
                 subject,
                 roleKey: role.name,
             });
         } catch (err) {
             this.logger.error("error deleting denorm policies", err as Error);
             throw err;
+        }
+
+        return { success: true };
+    }
+
+    protected async executeMongo(
+        data: IRemoveRoleFromUserTransactionInput<
+            MongoRole,
+            MongoUserPermissions,
+            UserEntity
+        >,
+        queryRunner: QueryRunner,
+        manager: MongoEntityManager
+    ): Promise<IRemoveRoleFromUserTransactionOutput> {
+        const { role, user, subject, userPermissions } = data;
+
+        userPermissions.roles = userPermissions.roles.filter(
+            (roleId: ObjectId) => {
+                return roleId.toString() !== role.id.toString();
+            }
+        );
+        try {
+            await manager.save(MongoUserPermissions, userPermissions);
+        } catch (err) {
+            this.logger.error("error updating user permissions", err as Error);
+            throw new InternalServerError(err);
+        }
+        try {
+            await queryRunner.manager.delete(MongoUserPoliciesDenorm, {
+                subject,
+                roleKey: role.name,
+            });
+        } catch (err) {
+            this.logger.error("error deleting denorm policies", err as Error);
+            throw new InternalServerError(err);
         }
 
         return { success: true };

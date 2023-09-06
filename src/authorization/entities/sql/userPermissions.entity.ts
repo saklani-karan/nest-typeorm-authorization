@@ -6,14 +6,12 @@ import {
     ManyToMany,
     PrimaryGeneratedColumn,
 } from "typeorm";
+import { SqlBaseEntity } from "./base.entity";
 import { Policy } from "./policy.entity";
 import { Role } from "./role.entity";
 
 @Entity("user_permissions")
-export class UserPermissions extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
-
+export class UserPermissions extends SqlBaseEntity {
     @Column({ name: "subject", type: "varchar" })
     subject: string;
 

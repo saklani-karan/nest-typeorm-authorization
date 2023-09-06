@@ -17,7 +17,7 @@ import {
     SetAccessPermissionsConfigType,
 } from "../decorators/abac.decorator";
 import { DatabaseEntity } from "../services/authorization.interface";
-import { AuthorizationService } from "../services/authorization.service";
+import { AuthorizationService } from "../services/authorization.sql.service";
 import { Logger } from "../../helpers/logger";
 import { Permission } from "../dto/checkUserAccess.dto";
 

@@ -1,14 +1,20 @@
 import { DataSourceOptions, EntitySchema } from "typeorm";
-import { Policy } from "./postgres/policy.entity";
-import { Role } from "./postgres/role.entity";
-import { UserPermissions } from "./postgres/userPermissions.entity";
-import { UserPoliciesDenorm } from "./postgres/userPoliciesDenorm.entity";
+import { getMongoEntities } from "./mongodb";
+import { getSQLEntities } from "./sql";
 
 export function getEntities(
     type: DataSourceOptions["type"]
 ): Array<string | Function | EntitySchema<any>> {
-    if (type === "postgres") {
-        return [Policy, Role, UserPermissions, UserPoliciesDenorm];
+    if (
+        type === "postgres" ||
+        type === "sqlite" ||
+        type === "mysql" ||
+        type === "sqljs" ||
+        type === "better-sqlite3"
+    ) {
+        return getSQLEntities();
+    } else if (type === "mongodb") {
+        return getMongoEntities();
     }
     throw new Error(`Database ${type} not supported`);
 }

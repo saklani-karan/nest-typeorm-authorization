@@ -4,13 +4,16 @@ import {
     ABAC_MODULE_TOKEN,
 } from "./constants/abac.constants";
 import { AuthorizationController } from "./controllers/authorization.controller";
+import { AuthorizationMongoController } from "./controllers/authorization.mongo.controller";
 import {
     AuthorizationModuleAsyncOptions,
     AuthorizationModuleFactory,
     AuthorizationModuleOptions,
+    DatabaseConnectionType,
     DatabaseEntity,
 } from "./services/authorization.interface";
-import { AuthorizationService } from "./services/authorization.service";
+import { AuthorizationMongoService } from "./services/authorization.mongo.service";
+import { AuthorizationService } from "./services/authorization.sql.service";
 
 @Module({})
 export class AuthorizationModule {
@@ -30,26 +33,55 @@ export class AuthorizationModule {
     }
 
     static forRootAsync<UserEntity extends DatabaseEntity = any>(
-        options: AuthorizationModuleAsyncOptions<UserEntity>
+        asyncOptions: AuthorizationModuleAsyncOptions<UserEntity>
     ): DynamicModule {
+        let databaseConnectionType: DatabaseConnectionType = null;
+        const controllers: Array<any> = [];
+        if (
+            ["postgres", "sqlite", "mysql", "sqljs", "better-sqlite3"].includes(
+                asyncOptions.databaseType
+            )
+        ) {
+            controllers.push(AuthorizationController<UserEntity>);
+            databaseConnectionType = DatabaseConnectionType.SQL;
+        } else if (["mongodb"].includes(asyncOptions.databaseType)) {
+            controllers.push(AuthorizationMongoController<UserEntity>);
+            databaseConnectionType = DatabaseConnectionType.MONGO;
+        }
         const provider: Provider = {
             inject: [ABAC_MODULE_OPTIONS],
             provide: ABAC_MODULE_TOKEN,
             useFactory: async (
                 options: AuthorizationModuleOptions<UserEntity>
-            ): Promise<AuthorizationService<UserEntity>> => {
-                return new AuthorizationService<UserEntity>(options);
+            ): Promise<
+                | AuthorizationService<UserEntity>
+                | AuthorizationMongoService<UserEntity>
+            > => {
+                if (
+                    options.databaseConnectionOptions.type !==
+                    asyncOptions.databaseType
+                ) {
+                    throw new Error(
+                        `databaseType '${asyncOptions.databaseType}' does not match database in connection options '${options.databaseConnectionOptions.type}'`
+                    );
+                }
+                switch (databaseConnectionType) {
+                    case DatabaseConnectionType.MONGO:
+                        return new AuthorizationMongoService(options);
+                    case DatabaseConnectionType.SQL:
+                        return new AuthorizationService(options);
+                }
             },
         };
 
         return {
             module: AuthorizationModule,
-            imports: options.imports,
+            imports: asyncOptions.imports,
             providers: [
-                ...this.createAsyncProvider<UserEntity>(options),
+                ...this.createAsyncProvider<UserEntity>(asyncOptions),
                 provider,
             ],
-            controllers: [AuthorizationController<UserEntity>],
+            controllers,
             exports: [provider],
         };
     }

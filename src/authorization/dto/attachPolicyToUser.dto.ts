@@ -1,15 +1,25 @@
-import { Policy } from "../entities/postgres/policy.entity";
-import { Role } from "../entities/postgres/role.entity";
-import { UserPermissions } from "../entities/postgres/userPermissions.entity";
+import {
+    Policy as SqlPolicy,
+    UserPermissions as SqlUserPermissions,
+} from "../entities/sql";
+import {
+    Policy as MongoPolicy,
+    UserPermissions as MongoUserPermissions,
+} from "../entities/mongodb";
 import { DatabaseEntity } from "../services/authorization.interface";
 
-export class AttachPolicyToUserParams<UserEntity extends DatabaseEntity> {
-    policyId: Policy["id"];
-    action: string;
-    resource: string;
+export class AttachPolicyToUserParams<
+    IPolicy extends SqlPolicy | MongoPolicy,
+    UserEntity extends DatabaseEntity
+> {
+    policyId: IPolicy["id"];
+    action: IPolicy["action"];
+    resource: IPolicy["resource"];
     userId: UserEntity["id"];
 }
 
-export class AttachPolicyToUserResponse<UserEntity extends DatabaseEntity> {
-    userPermissions: UserPermissions;
+export class AttachPolicyToUserResponse<
+    IUserPermissions extends SqlUserPermissions | MongoUserPermissions
+> {
+    userPermissions: IUserPermissions;
 }
