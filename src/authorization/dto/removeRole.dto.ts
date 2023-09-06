@@ -1,11 +1,11 @@
-import { Role } from "../entities/postgres/role.entity";
-
-export class RemoveRoleParams {
-    roleId: Role["id"];
+import { Role as SqlRole } from "../entities/sql/role.entity";
+import { Role as MongoRole } from "../entities/mongodb/role.entity";
+export class RemoveRoleParams<IRole extends SqlRole | MongoRole> {
+    roleId: IRole["id"];
     forceRemove: boolean;
 }
 
-export class RemoveRoleResponse {
-    role: Role;
+export class RemoveRoleResponse<IRole extends SqlRole | MongoRole> {
+    role: IRole;
     usersAffected: number = 0;
 }

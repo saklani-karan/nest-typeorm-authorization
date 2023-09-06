@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
-import { Policy } from "../entities/postgres/policy.entity";
+import { Policy as SqlPolicy } from "../entities/sql";
+import { Policy as MongoPolicy } from "../entities/mongodb";
 
 export class InsufficientPolicyDataException extends HttpException {
     constructor() {
@@ -10,8 +11,10 @@ export class InsufficientPolicyDataException extends HttpException {
     }
 }
 
-export class ConflicitingPolicyDataException extends HttpException {
-    constructor(queriedPolicy: Policy, idPolicy: Policy) {
+export class ConflicitingPolicyDataException<
+    IPolicy extends SqlPolicy | MongoPolicy
+> extends HttpException {
+    constructor(queriedPolicy: IPolicy, idPolicy: IPolicy) {
         super(
             `policy queried by id ${idPolicy.id} and policy queried by creation request ${queriedPolicy.id} are different`,
             HttpStatus.CONFLICT

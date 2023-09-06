@@ -1,15 +1,17 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
-import { Role } from "../entities/postgres/role.entity";
+import { Role as SqlRole } from "../entities/sql";
+import { Role as MongoRole } from "../entities/mongodb";
 import { DatabaseEntity } from "../services/authorization.interface";
 
 export class RoleNotAttachedOnUserException<
+    IRole extends SqlRole | MongoRole,
     UserEntity extends DatabaseEntity
 > extends HttpException {
     constructor({
         roleId,
         userId,
     }: {
-        roleId: Role["id"];
+        roleId: IRole["id"];
         userId: UserEntity["id"];
     }) {
         super(

@@ -6,13 +6,11 @@ import {
     ManyToMany,
     PrimaryGeneratedColumn,
 } from "typeorm";
+import { SqlBaseEntity } from "./base.entity";
 import { Policy } from "./policy.entity";
 
 @Entity("role")
-export class Role extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
-
+export class Role extends SqlBaseEntity {
     @Column({ name: "name" })
     name: string;
 

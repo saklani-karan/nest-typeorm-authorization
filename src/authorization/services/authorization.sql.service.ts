@@ -7,28 +7,31 @@ import {
     OnModuleDestroy,
 } from "@nestjs/common";
 import {
+    BaseEntity,
     DataSource,
     DataSourceOptions,
+    EntityTarget,
     FindOptionsSelect,
     FindOptionsWhere,
+    MongoRepository,
+    ObjectId,
     Repository,
 } from "typeorm";
 import { ABAC_MODULE_OPTIONS } from "../constants/abac.constants";
 import {
     AuthorizationModuleOptions,
+    DatabaseConnectionType,
     DatabaseEntity,
+    IAuthorizationService,
 } from "./authorization.interface";
 import { getEntities } from "../entities";
-import { Role } from "../entities/postgres/role.entity";
 import { CreateRoleParams } from "../dto/createRoleParams.dto";
 import { Logger } from "../../helpers/logger";
 import { RoleAlreadyExistsException } from "../exceptions/RoleExistsException.exception";
 import { CreatePolicyParams } from "../dto/createPolicyParams.dto";
-import { Policy } from "../entities/postgres/policy.entity";
 import { PolicyExistsException } from "../exceptions/PolicyExistsException.exception";
 import { CreateOrFindPolicyParams } from "../dto/createOrFindPolicyParams.dto";
 import { SubjectCannotBeEmptyException } from "../exceptions/SubjectCannotBeEmptyException";
-import { UserPermissions } from "../entities/postgres/userPermissions.entity";
 import { AddRoleToUserTransaction } from "../transactions/addRoleToUser.transaction";
 import { UserNotFoundException } from "../exceptions/UserNotFoundException.exception";
 import { RoleNotFoundException } from "../exceptions/RoleNotFoundException.exception";
@@ -58,12 +61,11 @@ import {
     AttachPolicyToUserParams,
     AttachPolicyToUserResponse,
 } from "../dto/attachPolicyToUser.dto";
-import { UserPoliciesDenorm } from "../entities/postgres/userPoliciesDenorm.entity";
 import { convertPolicyToPolicyMapKey } from "../../helpers/utils";
 import { PolicyAlreadyAttachedOnUserException } from "../exceptions/PolicyAlreadyAttachedOnUser.exception";
 import {
     AddPolicyToUserTransaction,
-    AddPolicyToUserTransactionResponse,
+    AddPolicyToUserTransactionOutput,
 } from "../transactions/addPolicyToUserTransaction";
 import {
     RemovePolicyFromUserParams,
@@ -87,17 +89,36 @@ import {
     InsufficientPolicyDataException,
 } from "../exceptions/InsufficientPolicyData.exception";
 import { CheckUserAccessRequest, Permission } from "../dto/checkUserAccess.dto";
+import {
+    Policy,
+    UserPermissions,
+    UserPoliciesDenorm,
+    Role,
+    getSQLEntities,
+} from "../entities/sql";
+import { AttachRoleToUserResponse } from "../dto/attachRoleToUser.dto";
+import { InternalServerError } from "../exceptions/InternalServerError.exception";
 
 @Injectable()
 export class AuthorizationService<UserEntity extends DatabaseEntity>
-    implements OnModuleInit, OnModuleDestroy
+    implements
+        OnModuleInit,
+        OnModuleDestroy,
+        IAuthorizationService<
+            Role,
+            Policy,
+            UserPermissions,
+            UserPoliciesDenorm,
+            UserEntity
+        >
 {
     private datasource: DataSource;
     private roleRepository: Repository<Role> = null;
     private policyRepository: Repository<Policy> = null;
-    private userRepository: Repository<UserEntity> = null;
     private userPermissionsRepository: Repository<UserPermissions> = null;
     private userPoliciesDenormRepository: Repository<UserPoliciesDenorm> = null;
+    private userRepository: Repository<UserEntity> = null;
+
     private addRoleToUserTransaction: AddRoleToUserTransaction<UserEntity>;
     private addRoleToPolicyTransaction: AddRoleToPolicyTransaction;
     private removePolicyFromRoleTransaction: RemovePolicyFromRoleTransaction;
@@ -115,10 +136,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
     async onModuleInit() {
         const datasourceConnectionOptions: DataSourceOptions = {
             ...this.options.databaseConnectionOptions,
-            entities: [
-                ...getEntities(this.options.databaseConnectionOptions.type),
-                this.options.userEntity,
-            ],
+            entities: [...getSQLEntities(), this.options.userEntity],
             synchronize: true,
         };
 
@@ -223,7 +241,10 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         this.logger.info("shutdown completed");
     }
 
-    async attachRoleToUserById(id: UserEntity["id"], roleId: Role["id"]) {
+    async attachRoleToUserById(
+        id: UserEntity["id"],
+        roleId: Role["id"]
+    ): Promise<AttachRoleToUserResponse> {
         const logger: Logger = this.logger.createForMethod(
             "attachRoleToUserById"
         );
@@ -299,7 +320,10 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         return { user, success: true };
     }
 
-    async attachRoleToUser(user: UserEntity, roleId: Role["id"]) {
+    async attachRoleToUser(
+        user: UserEntity,
+        roleId: Role["id"]
+    ): Promise<AttachRoleToUserResponse> {
         const logger: Logger = this.logger.createForMethod("attachRoleToUser");
         logger.info(`attaching role ${roleId} to user ${user}`);
 
@@ -320,14 +344,14 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         }
 
         if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
+            const roleNotFoundException: RoleNotFoundException<Role> =
                 new RoleNotFoundException({ id: roleId });
             logger.error("user not found for id", roleNotFoundException);
             throw roleNotFoundException;
         }
 
         if (!role?.policies?.length) {
-            const emptyRoleException: EmptyRoleException =
+            const emptyRoleException: EmptyRoleException<Role> =
                 new EmptyRoleException({ roleId });
             logger.error(
                 "role does not contain any policies",
@@ -388,7 +412,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             relations: { policies: true },
         });
         if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
+            const roleNotFoundException: RoleNotFoundException<Role> =
                 new RoleNotFoundException({ id: roleId });
             logger.error("role not found for id", roleNotFoundException);
             throw roleNotFoundException;
@@ -499,31 +523,31 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         return userPermissions.policies;
     }
 
-    async getPoliciesForRole(roleId: Role["id"]): Promise<Array<Policy>> {
-        const logger: Logger =
-            this.logger.createForMethod("getPoliciesForRole");
-        logger.info(`fetching policies for role`);
+    // async getPoliciesForRole(roleId: Role["id"]): Promise<Array<Policy>> {
+    //     const logger: Logger =
+    //         this.logger.createForMethod("getPoliciesForRole");
+    //     logger.info(`fetching policies for role`);
 
-        const role: Role = await this.roleRepository.findOne({
-            where: { id: roleId },
-            relations: { policies: true },
-        });
-        if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
-                new RoleNotFoundException({ id: roleId });
-            logger.error("role not found for id", roleNotFoundException);
-            throw roleNotFoundException;
-        }
+    //     const role: Role = await this.roleRepository.findOne({
+    //         where: { id: roleId },
+    //         relations: { policies: true },
+    //     });
+    //     if (!role) {
+    //         const roleNotFoundException: RoleNotFoundException<Role> =
+    //             new RoleNotFoundException({ id: roleId });
+    //         logger.error("role not found for id", roleNotFoundException);
+    //         throw roleNotFoundException;
+    //     }
 
-        if (!role?.policies?.length) {
-            return [];
-        }
+    //     if (!role?.policies?.length) {
+    //         return [];
+    //     }
 
-        return role.policies;
-    }
+    //     return role.policies;
+    // }
 
     async removeRoleFromUser(
-        params: RemoveRoleFromUserParams<UserEntity>
+        params: RemoveRoleFromUserParams<UserEntity, Role>
     ): Promise<RemoveRoleFromUserResponse> {
         const logger: Logger =
             this.logger.createForMethod("removeRoleFromuser");
@@ -543,7 +567,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         ]);
 
         if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
+            const roleNotFoundException: RoleNotFoundException<Role> =
                 new RoleNotFoundException({ id: roleId });
             logger.error("user not found for id", roleNotFoundException);
             throw roleNotFoundException;
@@ -579,11 +603,13 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
                 return userRole.id == role.id;
             })
         ) {
-            const roleNotAttachedOnUserException: RoleNotAttachedOnUserException<UserEntity> =
-                new RoleNotAttachedOnUserException<UserEntity>({
-                    roleId,
-                    userId,
-                });
+            const roleNotAttachedOnUserException: RoleNotAttachedOnUserException<
+                Role,
+                UserEntity
+            > = new RoleNotAttachedOnUserException<Role, UserEntity>({
+                roleId,
+                userId,
+            });
             logger.error(
                 "role not attached on user",
                 roleNotAttachedOnUserException
@@ -600,16 +626,15 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             });
         } catch (err) {
             logger.info("error on removing policy", err as Error);
-            throw new HttpException(
-                "an error occured while deleting the policy",
-                HttpStatus.INTERNAL_SERVER_ERROR
-            );
+            throw new InternalServerError(err);
         }
 
         return { success: true };
     }
 
-    async removeRole(params: RemoveRoleParams): Promise<RemoveRoleResponse> {
+    async removeRole(
+        params: RemoveRoleParams<Role>
+    ): Promise<RemoveRoleResponse<Role>> {
         const { roleId, forceRemove } = params;
         const logger: Logger = this.logger.createForMethod("removeRole");
 
@@ -622,14 +647,14 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         ]);
 
         if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
+            const roleNotFoundException: RoleNotFoundException<Role> =
                 new RoleNotFoundException({ id: roleId });
             logger.error("user not found for id", roleNotFoundException);
             throw roleNotFoundException;
         }
 
         if (userCount && !forceRemove) {
-            const roleAttachedOnUserException: RoleAttachedOnUsersException =
+            const roleAttachedOnUserException: RoleAttachedOnUsersException<Role> =
                 new RoleAttachedOnUsersException({ roleId, userCount });
             logger.error(
                 "role has a few users attached and forceRemove is set as false",
@@ -696,8 +721,8 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
     }
 
     async removePolicyFromRole(
-        params: RemovePolicyFromRoleParams
-    ): Promise<RemovePolicyFromRoleResponse> {
+        params: RemovePolicyFromRoleParams<Policy, Role>
+    ): Promise<RemovePolicyFromRoleResponse<Policy, Role>> {
         const logger: Logger = this.logger.createForMethod(
             "deletePolicyFromRole"
         );
@@ -746,7 +771,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             policy &&
             previousPolicy.id != policy.id
         ) {
-            const conflicitingPolicyDataException: ConflicitingPolicyDataException =
+            const conflicitingPolicyDataException: ConflicitingPolicyDataException<Policy> =
                 new ConflicitingPolicyDataException(previousPolicy, policy);
             logger.error(
                 "conflicting policy data found",
@@ -760,14 +785,14 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         }
 
         if (!policy) {
-            const policyNotFoundException: PolicyNotFoundException =
+            const policyNotFoundException: PolicyNotFoundException<Policy> =
                 new PolicyNotFoundException({ policyId });
             logger.error("policy not found", policyNotFoundException);
             throw policyNotFoundException;
         }
 
         if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
+            const roleNotFoundException: RoleNotFoundException<Role> =
                 new RoleNotFoundException({ id: roleId });
             logger.error("role not found", roleNotFoundException);
             throw roleNotFoundException;
@@ -778,8 +803,10 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
                 return rolePolicy.id == policy.id;
             })
         ) {
-            const policyNotAttachedOnRoleException: PolicyNotAttachedOnRoleException =
-                new PolicyNotAttachedOnRoleException({ policyId, roleId });
+            const policyNotAttachedOnRoleException: PolicyNotAttachedOnRoleException<
+                Policy,
+                Role
+            > = new PolicyNotAttachedOnRoleException({ policyId, roleId });
             logger.error(
                 "policy to be deleted is not attached on role",
                 policyNotAttachedOnRoleException
@@ -788,7 +815,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         }
 
         if (role.policies.length == 1) {
-            const roleCannotBeEmptyException: RoleCannotBeEmptyException =
+            const roleCannotBeEmptyException: RoleCannotBeEmptyException<Role> =
                 new RoleCannotBeEmptyException({ roleId });
             logger.error(
                 "deletion of policy would make the role empty",
@@ -797,7 +824,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             throw roleCannotBeEmptyException;
         }
 
-        const removePolicyFromRoleTransactionResponse: RemovePolicyFromRoleTransactionOutput =
+        const removePolicyFromRoleTransactionResponse: RemovePolicyFromRoleTransactionOutput[DatabaseConnectionType.SQL] =
             await this.removePolicyFromRoleTransaction.run({
                 policy,
                 role,
@@ -814,8 +841,8 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
     }
 
     async attachPolicyToUser(
-        params: AttachPolicyToUserParams<UserEntity>
-    ): Promise<AttachPolicyToUserResponse<UserEntity>> {
+        params: AttachPolicyToUserParams<Policy, UserEntity>
+    ): Promise<AttachPolicyToUserResponse<UserPermissions>> {
         const logger: Logger =
             this.logger.createForMethod("attachPolicyToUser");
         const { resource, action, userId, policyId } = params;
@@ -876,7 +903,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             policy &&
             previousPolicy.id != policy.id
         ) {
-            const conflicitingPolicyDataException: ConflicitingPolicyDataException =
+            const conflicitingPolicyDataException: ConflicitingPolicyDataException<Policy> =
                 new ConflicitingPolicyDataException(previousPolicy, policy);
             logger.error(
                 "conflicting policy data found",
@@ -890,7 +917,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         }
 
         if (!policy) {
-            const policyNotFoundException: PolicyNotFoundException =
+            const policyNotFoundException: PolicyNotFoundException<Policy> =
                 new PolicyNotFoundException({ policyId });
             logger.error("policy not found", policyNotFoundException);
             throw policyNotFoundException;
@@ -904,6 +931,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
                 where: {
                     subject,
                     policyMapKey: convertPolicyToPolicyMapKey(policy),
+                    roleKey: null,
                 },
             }),
             this.userPermissionsRepository.findOne({
@@ -912,11 +940,13 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         ]);
 
         if (existingDenormUserPolicyCount) {
-            const policyAlreadyAttachedOnUser: PolicyAlreadyAttachedOnUserException<UserEntity> =
-                new PolicyAlreadyAttachedOnUserException<UserEntity>({
-                    policyId,
-                    userId,
-                });
+            const policyAlreadyAttachedOnUser: PolicyAlreadyAttachedOnUserException<
+                Policy,
+                UserEntity
+            > = new PolicyAlreadyAttachedOnUserException<Policy, UserEntity>({
+                policyId,
+                userId,
+            });
             logger.error(
                 "policy already attached on user",
                 policyAlreadyAttachedOnUser
@@ -934,8 +964,8 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             throw insufficientPolicyDataException;
         }
 
-        const attachPolicyToUserResponse: AddPolicyToUserTransactionResponse<UserEntity> =
-            await this.addPolicyToUserTransaction.run({
+        const attachPolicyToUserResponse: AddPolicyToUserTransactionOutput[DatabaseConnectionType.SQL] =
+            (await this.addPolicyToUserTransaction.run({
                 subject,
                 policy,
                 policyCreationRequest: {
@@ -944,15 +974,16 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
                 },
                 user,
                 userPermissions,
-            });
+            })) as AddPolicyToUserTransactionOutput[DatabaseConnectionType.SQL];
         logger.info(`attachPolicyToUserResponse ${attachPolicyToUserResponse}`);
         return {
             userPermissions: attachPolicyToUserResponse.userPermissions,
         };
     }
 
+    // TODO: Add resource, action support
     async removePolicyFromUser(
-        params: RemovePolicyFromUserParams<UserEntity>
+        params: RemovePolicyFromUserParams<Policy, UserEntity>
     ): Promise<RemovePolicyFromUserResponse> {
         const logger: Logger = this.logger.createForMethod(
             "removePolicyFromUser"
@@ -985,7 +1016,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         }
 
         if (!policy) {
-            const policyNotFoundException: PolicyNotFoundException =
+            const policyNotFoundException: PolicyNotFoundException<Policy> =
                 new PolicyNotFoundException({ policyId });
             logger.error("policy not found", policyNotFoundException);
             throw policyNotFoundException;
@@ -1002,11 +1033,13 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
                 return userPolicy.id == policy.id;
             })
         ) {
-            const policyNotAttachedOnUserException: PolicyNotAttachedOnUserException<UserEntity> =
-                new PolicyNotAttachedOnUserException<UserEntity>({
-                    policyId,
-                    userId,
-                });
+            const policyNotAttachedOnUserException: PolicyNotAttachedOnUserException<
+                Policy,
+                UserEntity
+            > = new PolicyNotAttachedOnUserException<Policy, UserEntity>({
+                policyId,
+                userId,
+            });
             logger.error(
                 "policy not attached on user",
                 policyNotAttachedOnUserException
@@ -1033,8 +1066,8 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
     }
 
     async attachPolicyToRole(
-        params: AttachPolicyToRoleParams
-    ): Promise<AttachPolicyToRoleResponse> {
+        params: AttachPolicyToRoleParams<Policy, Role>
+    ): Promise<AttachPolicyToRoleResponse<Policy, Role>> {
         const logger: Logger =
             this.logger.createForMethod("attachPolicyToRole");
         const { resource, action, roleId, policyId } = params;
@@ -1077,7 +1110,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             ]);
 
         if (!role) {
-            const roleNotFoundException: RoleNotFoundException =
+            const roleNotFoundException: RoleNotFoundException<Role> =
                 new RoleNotFoundException({ id: roleId });
             logger.error(
                 `role not found for id=${roleId}`,
@@ -1102,7 +1135,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             policy &&
             previousPolicy.id != policy.id
         ) {
-            const conflicitingPolicyDataException: ConflicitingPolicyDataException =
+            const conflicitingPolicyDataException: ConflicitingPolicyDataException<Policy> =
                 new ConflicitingPolicyDataException(previousPolicy, policy);
             logger.error(
                 "conflicting policy data found",
@@ -1115,15 +1148,15 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
             policy = previousPolicy;
         }
 
-        const addPolcyToRoleResponse: AddRoleToPolicyTransactionOutput =
-            await this.addRoleToPolicyTransaction.run({
+        const addPolcyToRoleResponse: AddRoleToPolicyTransactionOutput[DatabaseConnectionType.SQL] =
+            (await this.addRoleToPolicyTransaction.run({
                 createPolicyParams: {
                     resource,
                     action,
                 },
                 role,
                 policy,
-            });
+            })) as AddRoleToPolicyTransactionOutput[DatabaseConnectionType.SQL];
 
         return {
             role: addPolcyToRoleResponse.role,
@@ -1131,7 +1164,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
         };
     }
 
-    async createPolicy(params: CreatePolicyParams): Promise<Policy> {
+    async createPolicy(params: CreatePolicyParams<Policy>): Promise<Policy> {
         const logger: Logger = this.logger.createForMethod("createPolicy");
         const { resource, action } = params;
 
@@ -1161,7 +1194,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
 
         let policy: Policy = null;
         try {
-            policy = await this.roleRepository.save(policyDao);
+            policy = await this.policyRepository.save(policyDao);
         } catch (err) {
             logger.error(`error creating policy`, err as Error);
             throw err;
@@ -1171,7 +1204,7 @@ export class AuthorizationService<UserEntity extends DatabaseEntity>
     }
 
     async createOrFindPolicy(
-        params: CreateOrFindPolicyParams
+        params: CreateOrFindPolicyParams<Policy>
     ): Promise<Policy> {
         const logger: Logger =
             this.logger.createForMethod("createOrFindPolicy");

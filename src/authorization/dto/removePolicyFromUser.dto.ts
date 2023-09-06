@@ -1,10 +1,14 @@
-import { Policy } from "../entities/postgres/policy.entity";
-import { UserPermissions } from "../entities/postgres/userPermissions.entity";
+import { Policy as SqlPolicy } from "../entities/sql";
+import { Policy as MongoPolicy } from "../entities/mongodb";
 import { DatabaseEntity } from "../services/authorization.interface";
 
-export class RemovePolicyFromUserParams<UserEntity extends DatabaseEntity> {
+// TODO: Add resource action support
+export class RemovePolicyFromUserParams<
+    IPolicy extends SqlPolicy | MongoPolicy,
+    UserEntity extends DatabaseEntity
+> {
     userId: UserEntity["id"];
-    policyId: Policy["id"];
+    policyId: IPolicy["id"];
 }
 
 export class RemovePolicyFromUserResponse {

@@ -1,14 +1,20 @@
-import { Policy } from "../entities/postgres/policy.entity";
-import { Role } from "../entities/postgres/role.entity";
+import { Policy as SqlPolicy, Role as SqlRole } from "../entities/sql";
+import { Policy as MongoPolicy, Role as MongoRole } from "../entities/mongodb";
 
-export class AttachPolicyToRoleParams {
+export class AttachPolicyToRoleParams<
+    IPolicy extends SqlPolicy | MongoPolicy,
+    IRole extends SqlRole | MongoRole
+> {
     action: string;
     resource: string;
-    policyId: Policy["id"];
-    roleId: Role["id"];
+    policyId: IPolicy["id"];
+    roleId: IRole["id"];
 }
 
-export class AttachPolicyToRoleResponse {
-    role: Role;
-    policy: Policy;
+export class AttachPolicyToRoleResponse<
+    IPolicy extends SqlPolicy | MongoPolicy,
+    IRole extends SqlRole | MongoRole
+> {
+    role: IRole;
+    policy: IPolicy;
 }

@@ -6,13 +6,11 @@ import {
     ManyToMany,
     PrimaryGeneratedColumn,
 } from "typeorm";
+import { SqlBaseEntity } from "./base.entity";
 import { Policy } from "./policy.entity";
 
 @Entity("user_policies_denorm")
-export class UserPoliciesDenorm extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
-
+export class UserPoliciesDenorm extends SqlBaseEntity {
     @Column({ type: "varchar", name: "subject" })
     subject: string;
 
